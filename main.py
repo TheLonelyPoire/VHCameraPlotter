@@ -1,10 +1,19 @@
+import os
+import math
+import copy
 import tkinter as tk
 from tkinter import filedialog
-import math
+from tkinter import colorchooser
 from functools import partial
-import copy
-
+import pkg_resources
 import globalVars as gV
+
+installed = {pkg.key for pkg in pkg_resources.working_set}
+usePIL = False
+if "pillow" in installed:
+    usePIL = True
+    from PIL import Image, ImageDraw
+
 
 """
 Reads in files of acceptable focal points and yaw ranges and generates a 
@@ -42,7 +51,7 @@ by a factor of 16 in each direction for easier generation/viewing.
 # Creates the tkinter window that houses the program
 def setup_window():
     gV.window = tk.Tk()
-    gV.window.title("Van Halen Camera Yaw Viewer")
+    gV.window.title("Van Halen Valid Camera Viewer")
     gV.window.geometry("1024x1024")
     gV.window.resizable(False, False)
 
@@ -56,6 +65,8 @@ def setup_menu_bar():
     filemenu = tk.Menu(menu_bar, tearoff=0)
     filemenu.add_command(label="Add New FP/Yaw File", command=spawn_load_file_window)
     filemenu.add_command(label="Save FP/Yaw Info to File", command=spawn_save_file_window)
+    if usePIL:
+        filemenu.add_command(label="Save PNG", command=save_png)
     filemenu.add_separator()
     filemenu.add_command(label="Exit", command=gV.window.quit)
     menu_bar.add_cascade(label='File', menu=filemenu)
@@ -147,6 +158,52 @@ def save_file(filename):
             yaw_str = yaw_str[:-1]
             file.write(yaw_str + '\n')
 
+# Helper for saving canvas as a PNG image
+def save_png():
+    filename = filedialog.asksaveasfilename(initialfile = 'Untitled.png',
+                                        defaultextension=".png",
+                                        filetypes=[("All Files","*.*"),
+                                                   ("PNG Image Files","*.png")])
+    
+    if filename is None or filename == "":
+        return
+
+    output = Image.new("RGB", (1024, 1024), gV.display_settings["background_color"])
+    draw = ImageDraw.Draw(output)
+
+    # Draw Polygons
+    for fp, yaw_ranges in gV.fps_and_yaws:
+        for yaw_range in yaw_ranges:
+            polygon_points = find_polygon(fp, yaw_range)
+            screen_polygon_points = mario_to_screen(polygon_points)
+
+            draw.polygon(screen_polygon_points, 
+                         outline=gV.display_settings["valid_position_color"], 
+                         fill=gV.display_settings["valid_position_color"])
+
+    # Draw Test Points
+    true_points, false_points = get_valid_invalid_points()
+
+    true_sps = mario_to_screen(true_points)
+    false_sps = mario_to_screen(false_points)
+
+    for sp in true_sps:
+        gV.shapes.append(draw.ellipse([int(sp[0] - gV.display_settings["test_point_diameter"]/2), 
+                                      int(sp[1] - gV.display_settings["test_point_diameter"]/2),
+                                      int(sp[0] + gV.display_settings["test_point_diameter"]/2),
+                                      int(sp[1] + gV.display_settings["test_point_diameter"]/2)],
+                                      outline=gV.display_settings["test_point_success_color"],
+                                      fill=gV.display_settings["test_point_success_color"]))
+    for sp in false_sps:
+        gV.shapes.append(draw.ellipse([int(sp[0] - gV.display_settings["test_point_diameter"]/2), 
+                                      int(sp[1] - gV.display_settings["test_point_diameter"]/2),
+                                      int(sp[0] + gV.display_settings["test_point_diameter"]/2),
+                                      int(sp[1] + gV.display_settings["test_point_diameter"]/2)],
+                                      outline=gV.display_settings["test_point_failure_color"],
+                                      fill=gV.display_settings["test_point_failure_color"]))
+    
+    output.save(filename)
+
 # Clears all focal point/yaw information and redraws the screen
 def clear_existing_fps():
     gV.fps_and_yaws = []
@@ -226,42 +283,85 @@ def spawn_popup(title : str, message : str):
 def spawn_display_settings_window():
     ds_window = tk.Toplevel(gV.window)
     ds_window.title("Display Settings")
-    ds_window.geometry("300x90")
+    ds_window.geometry("250x250")
+    ds_window.resizable(False, False)
 
+    # Background Color
+    setup_color_setting(ds_window, "Background Color: ", "background_color", "Choose a new background color...")
+
+    # Valid Position Color
+    setup_color_setting(ds_window, "Valid Position Color: ", "valid_position_color", "Choose a new valid position color...")
+
+    # Test Point Diameter Size
     tp_diameter_frame = tk.Frame(ds_window)
-    tp_diameter_frame.pack(pady=10)
+    tp_diameter_frame.pack(pady=10, anchor="w")
 
-    tk.Label(tp_diameter_frame, text="Test Point Diameter: ").pack(side=tk.LEFT, padx=5)
+    tk.Label(tp_diameter_frame, text="Test Point Diameter: ").pack(side=tk.LEFT, padx=5, anchor="w")
     diameter_str = tk.StringVar()
-    diameter_entry = tk.Entry(tp_diameter_frame, width=20, textvariable=diameter_str)
+    diameter_entry = tk.Entry(tp_diameter_frame, width=10, textvariable=diameter_str)
     diameter_entry.bind("<KeyRelease>", )
     diameter_entry.insert(0, str(gV.display_settings["test_point_diameter"]))
-    diameter_entry.pack(side=tk.LEFT)
+    diameter_entry.pack(side=tk.LEFT, anchor="e")
 
+    # Test Point Successful Color
+    setup_color_setting(ds_window, "Test Point Color (Valid): ", "test_point_success_color", "Choose a new valid test point color...")
+
+    # Test Point Successful Color
+    setup_color_setting(ds_window, "Test Point Color (Invalid): ", "test_point_failure_color", "Choose a new invalid test point color...")
+
+    # Bottom Button Frame
     button_frame = tk.Frame(ds_window)
-    button_frame.pack(pady=10)
+    button_frame.pack(pady=10, side=tk.RIGHT, anchor="e")
 
     ok_button = tk.Button(button_frame, text="OK", width=10, height=4, command=partial(save_display_settings, ds_window, diameter_str))
     cancel_button = tk.Button(button_frame, text="Cancel", width=10, height=4, command=ds_window.destroy) 
 
-    cancel_button.pack(side=tk.RIGHT, padx=5)
-    ok_button.pack(side=tk.RIGHT, padx=5) 
+    cancel_button.pack(side=tk.RIGHT, padx=5, anchor="e")
+    ok_button.pack(side=tk.RIGHT, padx=5, anchor="e") 
+
+    gV.old_diplay_settings = copy.deepcopy(gV.display_settings)
+
+    ds_window.focus_force()
+    ds_window.grab_set()  
+
+# Helper for setting up a color setting option in the display settings window
+def setup_color_setting(ds_window : tk.Toplevel, label_text : str, settings_entry : str, color_dialog_title : str):
+    setting_frame = tk.Frame(ds_window)
+    setting_frame.pack(pady=10, anchor="w")
+
+    tk.Label(setting_frame, text=label_text).pack(side=tk.LEFT, padx=5, anchor="w")
+    color_button = tk.Button(setting_frame, width=10, borderwidth=0, highlightthickness=0, 
+                             bg=gV.display_settings[settings_entry])
+    color_button.configure(command=partial(change_display_color_setting, 
+                                              ds_window, color_button, 
+                                              settings_entry, color_dialog_title))
+    color_button.pack(side=tk.LEFT, anchor="e")
+
+# Callback for color settings in the display settings
+def change_display_color_setting(ds_window : tk.Toplevel, color_button : tk.Button, settings_entry : str, dialog_title : str):
+    ds_window.grab_release()
+    output = colorchooser.askcolor(title=dialog_title, parent=ds_window)
+    if output[1] is not None:
+        gV.display_settings[settings_entry] = output[1]
+        color_button.configure(bg=output[1])
+
+    ds_window.focus_force()
+    ds_window.grab_set()    
 
 # Helper for saving display settings
 def save_display_settings(ds_window : tk.Toplevel, diameter_str : tk.StringVar):
-    old_display_settings = copy.deepcopy(gV.display_settings)
-
+    
     # Save Display Diameter
-    if not save_display_diameter(diameter_str):
+    if not save_display_test_point_diameter(diameter_str):
         spawn_popup("Invalid Format Warning!", "Diameter must be a positive number.")
-        gV.display_settings = old_display_settings
+        gV.display_settings = gV.old_display_settings
         return
     
     # If all save functions returned true, close settings window
     ds_window.destroy()
 
 # Helper for saving display diameter
-def save_display_diameter(diameter_str : tk.StringVar):
+def save_display_test_point_diameter(diameter_str : tk.StringVar):
     if diameter_str is None:
         print("BUG: Entries are none!")
         return False
@@ -374,36 +474,25 @@ def find_enclosed_corner_points(fp, yaw_range):
 
     return enclosed_corner_points
 
-# Draws all camera regions specified by 'focal_points_and_yaws' to the screen
-def draw_screen():
-    # Clear existing canvas
-    for shape in gV.shapes:
-        canvas.delete(shape)
+# Helper for finding the polygon corresponding to a focal point and yaw range
+def find_polygon(fp, yaw_range):
+    # Determine the yaw slope points
+    p1 = find_point_along_yaw_at_map_bounds(fp, wrap_yaw(yaw_range[0] + (0 if gV.flipped else 32768)))
+    p2 = find_point_along_yaw_at_map_bounds(fp, wrap_yaw(yaw_range[1] + (0 if gV.flipped else 32768)))
 
-    gV.shapes = []
-    
-    # Draw Polygons
-    for fp, yaw_ranges in gV.fps_and_yaws:
-        for yaw_range in yaw_ranges:
+    # Check for corner points
+    enclosed_corner_points = find_enclosed_corner_points(fp, yaw_range)
 
-            # Determine the yaw slope points
-            p1 = find_point_along_yaw_at_map_bounds(fp, wrap_yaw(yaw_range[0] + (0 if gV.flipped else 32768)))
-            p2 = find_point_along_yaw_at_map_bounds(fp, wrap_yaw(yaw_range[1] + (0 if gV.flipped else 32768)))
+    polygon_points = [fp, p1]
+    for ecp in enclosed_corner_points:
+        polygon_points.append(ecp)
+    polygon_points.append(p2)
+    polygon_points.append(fp)
 
-            # Check for corner points
-            enclosed_corner_points = find_enclosed_corner_points(fp, yaw_range)
+    return polygon_points
 
-            polygon_points = [fp, p1]
-            for ecp in enclosed_corner_points:
-                polygon_points.append(ecp)
-            polygon_points.append(p2)
-            polygon_points.append(fp)
-
-            screen_polygon_points = mario_to_screen(polygon_points)
-
-            gV.shapes.append(canvas.create_polygon(screen_polygon_points, outline='white', fill='white'))
-
-    # Draw Test Points
+# Helper for evaluating all test points as valid/invalid
+def get_valid_invalid_points():
     true_points = []
     false_points = copy.deepcopy(gV.points)
 
@@ -415,6 +504,30 @@ def draw_screen():
                     true_points.append(tp)
                     false_points.remove(tp)
                     break 
+    
+    return true_points, false_points
+
+# Draws all camera regions specified by 'focal_points_and_yaws' to the screen
+def draw_screen():
+    # Clear existing canvas
+    for shape in gV.shapes:
+        canvas.delete(shape)
+
+    canvas.configure(bg=gV.display_settings["background_color"])
+    gV.shapes = []
+    
+    # Draw Polygons
+    for fp, yaw_ranges in gV.fps_and_yaws:
+        for yaw_range in yaw_ranges:
+            polygon_points = find_polygon(fp, yaw_range)
+            screen_polygon_points = mario_to_screen(polygon_points)
+
+            gV.shapes.append(canvas.create_polygon(screen_polygon_points, 
+                                                   outline=gV.display_settings["valid_position_color"], 
+                                                   fill=gV.display_settings["valid_position_color"]))
+
+    # Draw Test Points
+    true_points, false_points = get_valid_invalid_points()
 
     true_sps = mario_to_screen(true_points)
     false_sps = mario_to_screen(false_points)
@@ -424,13 +537,15 @@ def draw_screen():
                                             int(sp[1] - gV.display_settings["test_point_diameter"]/2),
                                             int(sp[0] + gV.display_settings["test_point_diameter"]/2),
                                             int(sp[1] + gV.display_settings["test_point_diameter"]/2),
-                                            outline='#00FF00', fill='#00FF00'))
+                                            outline=gV.display_settings["test_point_success_color"], 
+                                            fill=gV.display_settings["test_point_success_color"]))
     for sp in false_sps:
         gV.shapes.append(canvas.create_oval(int(sp[0] - gV.display_settings["test_point_diameter"]/2), 
                                             int(sp[1] - gV.display_settings["test_point_diameter"]/2),
                                             int(sp[0] + gV.display_settings["test_point_diameter"]/2),
                                             int(sp[1] + gV.display_settings["test_point_diameter"]/2),
-                                            outline='orange', fill='orange'))
+                                            outline=gV.display_settings["test_point_failure_color"],
+                                            fill=gV.display_settings["test_point_failure_color"]))
 
 # Main Code
 
@@ -442,7 +557,7 @@ setup_menu_bar()
 canvas_frame = tk.Frame()
 
 canvas = tk.Canvas(master=canvas_frame)
-canvas.configure(bg='#800000')
+canvas.configure(bg=gV.display_settings["background_color"])
 canvas.pack(fill = tk.BOTH, expand = 1)  
 
 canvas_frame.pack(fill = tk.BOTH, expand = 1)
