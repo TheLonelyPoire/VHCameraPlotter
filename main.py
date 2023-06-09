@@ -497,13 +497,16 @@ def get_valid_invalid_points():
     false_points = copy.deepcopy(gV.points)
 
     for fp, yaw_ranges in gV.fps_and_yaws:
+        new_true_points = []
         for tp in false_points:
             yaw = compute_p2p_yaw(fp, tp) if gV.flipped else compute_p2p_yaw(tp, fp)
             for yaw_range in yaw_ranges:
                 if yaw_within_yaw_range(yaw, yaw_range):
-                    true_points.append(tp)
-                    false_points.remove(tp)
+                    new_true_points.append(tp)
                     break 
+        for tp in new_true_points:
+            true_points.append(tp)
+            false_points.remove(tp)
     
     return true_points, false_points
 
