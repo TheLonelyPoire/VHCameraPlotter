@@ -36,3 +36,8 @@ by a factor of 16 in each direction for easier generation/viewing.
 In addition, the user can add specific test points, which will be shown as
 circles on the plot. Test points within an acceptable region are shown in 
 green, and test points outside all acceptable regions are shown in orange.
+
+**This was implemented with Python trig functions and is therefore not
+accurate to in-game calculations. This tool is intended to be used for
+visualization purposes, not accurate simulation of in-game camera
+computations.**
