@@ -1,0 +1,6 @@
+# Comments require a '#' at the beginning of a line
+# Spaces seem to be fine wherever (no promises about tabs or other strange whitespace though)
+
+8192,0 : 48000,49000,50000,51000
+6400, 6400 : 40000,42000
+16384,    -12000 : 57000,        57250
