@@ -1,4 +1,7 @@
 # VHCameraPlotter
+
+![Alt text](/Images/ReadMeScreenshot.png?raw=true "VH Camera Plotter")
+
 Simple TKinter Program for Visualizing Valid SM64 Camera Positions
 
 This program allows the user to read in focal point/yaw ranges and visualize 
