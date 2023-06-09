@@ -7,8 +7,8 @@ positions are shown in white.
 
 Files are expected to be a sequence of lines with the following format:
 
-focal_point_x,focal_point_z : yaw_range_1_start,yaw_range_1_end,yaw_range_2_start,yaw_range_2_end,...,yaw_range_n_start,yaw_range_n_end
-                            ^
+`fp_x,fp_z : yaw_range_1_start,yaw_range_1_end,yaw_range_2_start,yaw_range_2_end,...,yaw_range_n_start,yaw_range_n_end`
+                            
 Note the colon separating the focal point entries from the yaw range entries.
 
 Each line needs at least two entries for the focal point, and each valid
